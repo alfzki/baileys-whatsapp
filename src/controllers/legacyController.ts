@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
-import { WhatsAppService } from '@/services';
-import { getSessionStatus } from '@/utils';
-import { asyncHandler } from '@/middleware';
+import { WhatsAppService } from '@/services/index.js';
+import { getSessionStatus } from '@/utils/index.js';
+import { asyncHandler } from '@/middleware/index.js';
 
 /**
  * Legacy Controller

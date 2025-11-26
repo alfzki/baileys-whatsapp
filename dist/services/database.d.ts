@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { MessageType, MessageDirection } from '@/types';
+import { MessageType, MessageDirection } from '@/types/index.js';
 export declare const prisma: PrismaClient<import(".prisma/client").Prisma.PrismaClientOptions, never, import("@prisma/client/runtime/library").DefaultArgs>;
 export declare class DatabaseService {
     static createSessionRecord(sessionId: string): Promise<{

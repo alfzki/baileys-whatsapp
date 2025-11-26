@@ -1,18 +1,14 @@
-"use strict";
 var _a;
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.MessageController = void 0;
-const services_1 = require("@/services");
-const utils_1 = require("@/utils");
-const middleware_1 = require("@/middleware");
-class MessageController {
+import { WhatsAppService, DatabaseService } from '@/services/index.js';
+import { formatPhoneNumber, extractPhoneNumber, sleep } from '@/utils/index.js';
+import { asyncHandler } from '@/middleware/index.js';
+export class MessageController {
 }
-exports.MessageController = MessageController;
 _a = MessageController;
-MessageController.sendMessage = (0, middleware_1.asyncHandler)(async (req, res) => {
+MessageController.sendMessage = asyncHandler(async (req, res) => {
     const { sessionId } = req.params;
     const { jid, type, message, options = {} } = req.body;
-    const sessions = services_1.WhatsAppService.getSessions();
+    const sessions = WhatsAppService.getSessions();
     const sessionData = sessions.get(sessionId);
     if (!sessionData || !sessionData.isAuthenticated) {
         return res.status(400).json({
@@ -29,9 +25,9 @@ MessageController.sendMessage = (0, middleware_1.asyncHandler)(async (req, res) 
     try {
         let targetJid = jid;
         if (type === 'number') {
-            targetJid = (0, utils_1.formatPhoneNumber)(jid);
+            targetJid = formatPhoneNumber(jid);
         }
-        const result = await services_1.WhatsAppService.sendMessage(sessionId, targetJid, message, options);
+        const result = await WhatsAppService.sendMessage(sessionId, targetJid, message, options);
         res.json({
             success: true,
             data: result
@@ -46,10 +42,10 @@ MessageController.sendMessage = (0, middleware_1.asyncHandler)(async (req, res) 
         });
     }
 });
-MessageController.sendBulkMessages = (0, middleware_1.asyncHandler)(async (req, res) => {
+MessageController.sendBulkMessages = asyncHandler(async (req, res) => {
     const { sessionId } = req.params;
     const messages = req.body;
-    const sessions = services_1.WhatsAppService.getSessions();
+    const sessions = WhatsAppService.getSessions();
     const sessionData = sessions.get(sessionId);
     if (!sessionData || !sessionData.isAuthenticated) {
         return res.status(400).json({
@@ -70,13 +66,13 @@ MessageController.sendBulkMessages = (0, middleware_1.asyncHandler)(async (req, 
             const { jid, type, message, options = {}, delay = 1000 } = messages[i];
             try {
                 if (i > 0) {
-                    await (0, utils_1.sleep)(delay);
+                    await sleep(delay);
                 }
                 let targetJid = jid;
                 if (type === 'number') {
-                    targetJid = (0, utils_1.formatPhoneNumber)(jid);
+                    targetJid = formatPhoneNumber(jid);
                 }
-                const result = await services_1.WhatsAppService.sendMessage(sessionId, targetJid, message, options);
+                const result = await WhatsAppService.sendMessage(sessionId, targetJid, message, options);
                 results.push({ index: i, result });
             }
             catch (error) {
@@ -101,15 +97,15 @@ MessageController.sendBulkMessages = (0, middleware_1.asyncHandler)(async (req, 
         });
     }
 });
-MessageController.getChatHistory = (0, middleware_1.asyncHandler)(async (req, res) => {
+MessageController.getChatHistory = asyncHandler(async (req, res) => {
     const { sessionId, jid } = req.params;
     const { page = '1', limit = '25', cursor } = req.query;
     try {
         let phoneNumber;
         if (jid) {
-            phoneNumber = (0, utils_1.extractPhoneNumber)(jid);
+            phoneNumber = extractPhoneNumber(jid);
         }
-        const result = await services_1.DatabaseService.getChatHistory(sessionId, phoneNumber, parseInt(page), parseInt(limit), cursor ? parseInt(cursor) : undefined);
+        const result = await DatabaseService.getChatHistory(sessionId, phoneNumber, parseInt(page), parseInt(limit), cursor ? parseInt(cursor) : undefined);
         res.json({
             success: true,
             ...result
@@ -124,10 +120,10 @@ MessageController.getChatHistory = (0, middleware_1.asyncHandler)(async (req, re
         });
     }
 });
-MessageController.getContacts = (0, middleware_1.asyncHandler)(async (req, res) => {
+MessageController.getContacts = asyncHandler(async (req, res) => {
     const { sessionId } = req.params;
     const { limit = '25', cursor, search } = req.query;
-    const sessions = services_1.WhatsAppService.getSessions();
+    const sessions = WhatsAppService.getSessions();
     const sessionData = sessions.get(sessionId);
     if (!sessionData || !sessionData.isAuthenticated) {
         return res.status(400).json({
@@ -152,10 +148,10 @@ MessageController.getContacts = (0, middleware_1.asyncHandler)(async (req, res) 
         });
     }
 });
-MessageController.sendPoll = (0, middleware_1.asyncHandler)(async (req, res) => {
+MessageController.sendPoll = asyncHandler(async (req, res) => {
     const { sessionId } = req.params;
     const { jid, type, name, options, selectableCount = 1 } = req.body;
-    const sessions = services_1.WhatsAppService.getSessions();
+    const sessions = WhatsAppService.getSessions();
     const sessionData = sessions.get(sessionId);
     if (!sessionData || !sessionData.isAuthenticated) {
         return res.status(400).json({
@@ -184,7 +180,7 @@ MessageController.sendPoll = (0, middleware_1.asyncHandler)(async (req, res) => 
     try {
         let targetJid = jid;
         if (type === 'number') {
-            targetJid = (0, utils_1.formatPhoneNumber)(jid);
+            targetJid = formatPhoneNumber(jid);
         }
         if (!targetJid.endsWith('@g.us')) {
             return res.status(400).json({
@@ -192,7 +188,7 @@ MessageController.sendPoll = (0, middleware_1.asyncHandler)(async (req, res) => 
                 message: 'Polls can only be sent to groups'
             });
         }
-        const result = await services_1.WhatsAppService.sendPoll(sessionId, targetJid, name, options, selectableCount);
+        const result = await WhatsAppService.sendPoll(sessionId, targetJid, name, options, selectableCount);
         res.json({
             success: true,
             data: result
@@ -207,9 +203,9 @@ MessageController.sendPoll = (0, middleware_1.asyncHandler)(async (req, res) => 
         });
     }
 });
-MessageController.getGroups = (0, middleware_1.asyncHandler)(async (req, res) => {
+MessageController.getGroups = asyncHandler(async (req, res) => {
     const { sessionId } = req.params;
-    const sessions = services_1.WhatsAppService.getSessions();
+    const sessions = WhatsAppService.getSessions();
     const sessionData = sessions.get(sessionId);
     if (!sessionData || !sessionData.isAuthenticated) {
         return res.status(400).json({
@@ -218,7 +214,7 @@ MessageController.getGroups = (0, middleware_1.asyncHandler)(async (req, res) =>
         });
     }
     try {
-        const groups = await services_1.WhatsAppService.getGroups(sessionId);
+        const groups = await WhatsAppService.getGroups(sessionId);
         res.json({
             success: true,
             data: groups,

@@ -1,16 +1,13 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.sessionRoutes = void 0;
-const express_1 = require("express");
-const controllers_1 = require("@/controllers");
-const middleware_1 = require("@/middleware");
-const router = (0, express_1.Router)();
-exports.sessionRoutes = router;
-router.get('/sessions', middleware_1.authenticateApiKey, controllers_1.SessionController.listSessions);
-router.get('/sessions/:sessionId', middleware_1.authenticateApiKey, controllers_1.SessionController.findSession);
-router.get('/sessions/:sessionId/status', middleware_1.authenticateApiKey, controllers_1.SessionController.getSessionStatus);
-router.get('/sessions/:sessionId/qr', middleware_1.authenticateApiKey, controllers_1.SessionController.getQRCode);
-router.post('/sessions/add', middleware_1.authenticateApiKey, controllers_1.SessionController.addSession);
-router.delete('/sessions/:sessionId', middleware_1.authenticateApiKey, controllers_1.SessionController.deleteSession);
-router.get('/sessions-history', middleware_1.authenticateApiKey, controllers_1.SessionController.getSessionsHistory);
+import { Router } from 'express';
+import { SessionController } from '@/controllers/index.js';
+import { authenticateApiKey } from '@/middleware/index.js';
+const router = Router();
+router.get('/sessions', authenticateApiKey, SessionController.listSessions);
+router.get('/sessions/:sessionId', authenticateApiKey, SessionController.findSession);
+router.get('/sessions/:sessionId/status', authenticateApiKey, SessionController.getSessionStatus);
+router.get('/sessions/:sessionId/qr', authenticateApiKey, SessionController.getQRCode);
+router.post('/sessions/add', authenticateApiKey, SessionController.addSession);
+router.delete('/sessions/:sessionId', authenticateApiKey, SessionController.deleteSession);
+router.get('/sessions-history', authenticateApiKey, SessionController.getSessionsHistory);
+export { router as sessionRoutes };
 //# sourceMappingURL=sessionRoutes.js.map

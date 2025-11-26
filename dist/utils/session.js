@@ -1,11 +1,4 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.getSessionStatus = getSessionStatus;
-exports.generateSessionId = generateSessionId;
-exports.isValidSessionId = isValidSessionId;
-exports.getSessionUptime = getSessionUptime;
-exports.formatSessionUptime = formatSessionUptime;
-function getSessionStatus(sessionId, sessions) {
+export function getSessionStatus(sessionId, sessions) {
     const session = sessions.get(sessionId);
     if (!session)
         return 'DISCONNECTED';
@@ -23,19 +16,19 @@ function getSessionStatus(sessionId, sessions) {
     }
     return 'DISCONNECTED';
 }
-function generateSessionId(prefix = 'session') {
+export function generateSessionId(prefix = 'session') {
     const timestamp = Date.now();
     const random = Math.random().toString(36).substring(2, 8);
     return `${prefix}_${timestamp}_${random}`;
 }
-function isValidSessionId(sessionId) {
+export function isValidSessionId(sessionId) {
     const sessionIdRegex = /^[a-zA-Z0-9_-]+$/;
     return sessionIdRegex.test(sessionId) && sessionId.length >= 3 && sessionId.length <= 50;
 }
-function getSessionUptime(session) {
+export function getSessionUptime(session) {
     return Date.now() - session.startTime;
 }
-function formatSessionUptime(session) {
+export function formatSessionUptime(session) {
     const uptime = getSessionUptime(session);
     const seconds = Math.floor(uptime / 1000);
     const minutes = Math.floor(seconds / 60);

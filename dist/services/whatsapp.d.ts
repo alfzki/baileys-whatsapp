@@ -1,4 +1,4 @@
-import { SessionData, ConnectionOptions } from '@/types';
+import { SessionData, ConnectionOptions } from '@/types/index.js';
 export declare class WhatsAppService {
     private static sessions;
     private static sessionQRs;
@@ -6,8 +6,8 @@ export declare class WhatsAppService {
     static getSessionQRs(): Map<string, string>;
     static createConnection(sessionId: string, options?: ConnectionOptions): Promise<SessionData>;
     private static setupEventHandlers;
-    static sendMessage(sessionId: string, jid: string, message: any, options?: any): Promise<import("@whiskeysockets/baileys").proto.WebMessageInfo | undefined>;
-    static sendPoll(sessionId: string, jid: string, name: string, options: string[], selectableCount?: number): Promise<import("@whiskeysockets/baileys").proto.WebMessageInfo | undefined>;
+    static sendMessage(sessionId: string, jid: string, message: any, options?: any): Promise<import("@whiskeysockets/baileys").WAMessage | undefined>;
+    static sendPoll(sessionId: string, jid: string, name: string, options: string[], selectableCount?: number): Promise<import("@whiskeysockets/baileys").WAMessage | undefined>;
     static getGroups(sessionId: string): Promise<{
         jid: string;
         name: string;
@@ -15,7 +15,8 @@ export declare class WhatsAppService {
         participantsCount: number;
         isAdmin: boolean;
         createdAt: Date | null;
-        owner: string | null;
+        owner: any;
+        ownerLid: any;
     }[]>;
     static deleteSession(sessionId: string): Promise<void>;
     static waitForQR(sessionId: string, maxAttempts?: number): Promise<string | 'authenticated' | null>;

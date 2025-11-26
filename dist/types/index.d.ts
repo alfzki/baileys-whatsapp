@@ -6,6 +6,7 @@ export interface SessionData {
     authDir: string;
     status: SessionStatus;
     startTime: number;
+    cleanup?: () => void;
 }
 export type SessionStatus = 'CONNECTING' | 'CONNECTED' | 'AUTHENTICATED' | 'DISCONNECTED' | 'CLOSING' | 'connecting' | 'waiting_qr_scan' | 'disconnected' | 'logged_out';
 export interface ApiResponse<T = any> {

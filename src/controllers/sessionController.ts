@@ -5,10 +5,10 @@ import {
   SessionListResponse,
   SessionStatusResponse,
   QRResponse 
-} from '@/types';
-import { WhatsAppService, DatabaseService } from '@/services';
-import { getSessionStatus, isValidSessionId } from '@/utils';
-import { asyncHandler } from '@/middleware';
+} from '@/types/index.js';
+import { WhatsAppService, DatabaseService } from '@/services/index.js';
+import { getSessionStatus, isValidSessionId } from '@/utils/index.js';
+import { asyncHandler } from '@/middleware/index.js';
 
 /**
  * Session Controller

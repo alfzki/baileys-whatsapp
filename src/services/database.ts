@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { ChatHistoryMessage, MessageType, MessageDirection, SessionStatus } from '@/types';
+import { ChatHistoryMessage, MessageType, MessageDirection, SessionStatus } from '@/types/index.js';
 
 // Initialize Prisma Client
 export const prisma = new PrismaClient();
@@ -209,29 +209,46 @@ export class DatabaseService {
    * @param value - Authentication data value
    */
   static async saveAuthData(sessionId: string, key: string, value: string): Promise<void> {
-    try {
-      await prisma.authData.upsert({
-        where: {
-          sessionId_key: {
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        await prisma.authData.upsert({
+          where: {
+            sessionId_key: {
+              sessionId,
+              key
+            }
+          },
+          update: {
+            value,
+            updatedAt: new Date()
+          },
+          create: {
             sessionId,
-            key
+            key,
+            value,
+            createdAt: new Date(),
+            updatedAt: new Date()
           }
-        },
-        update: {
-          value,
-          updatedAt: new Date()
-        },
-        create: {
-          sessionId,
-          key,
-          value,
-          createdAt: new Date(),
-          updatedAt: new Date()
+        });
+        return;
+      } catch (error: any) {
+        const isTransient = error.message?.includes('Record has changed since last read') || 
+                           error.message?.includes('Deadlock found') ||
+                           error.code === 'P2034' || // Transaction failed
+                           error.code === 'P2002';   // Unique constraint failed (race condition on create)
+        
+        if (isTransient && retries > 1) {
+          retries--;
+          // Random jitter to prevent thundering herd
+          const delay = 200 + Math.random() * 300;
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
         }
-      });
-    } catch (error) {
-      console.error('Error saving auth data:', error);
-      throw error;
+        
+        console.error('Error saving auth data:', error);
+        throw error;
+      }
     }
   }
 

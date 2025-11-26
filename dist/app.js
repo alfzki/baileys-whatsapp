@@ -1,23 +1,17 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-require("module-alias/register");
-const express_1 = __importDefault(require("express"));
-const dotenv_1 = require("dotenv");
-const routes_1 = require("@/routes");
-const middleware_1 = require("@/middleware");
-const services_1 = require("@/services");
-const services_2 = require("@/services");
-(0, dotenv_1.config)();
-const app = (0, express_1.default)();
-app.use(express_1.default.json());
-app.use(middleware_1.requestLogger);
-app.use(middleware_1.corsHeaders);
-app.use('/', routes_1.sessionRoutes);
-app.use('/', routes_1.messageRoutes);
-app.use('/', routes_1.legacyRoutes);
+import express from 'express';
+import { config } from 'dotenv';
+import { sessionRoutes, messageRoutes, legacyRoutes } from '@/routes/index.js';
+import { errorHandler, notFoundHandler, requestLogger, corsHeaders } from '@/middleware/index.js';
+import { DatabaseService } from '@/services/index.js';
+import { WhatsAppService } from '@/services/index.js';
+config();
+const app = express();
+app.use(express.json());
+app.use(requestLogger);
+app.use(corsHeaders);
+app.use('/', sessionRoutes);
+app.use('/', messageRoutes);
+app.use('/', legacyRoutes);
 console.log('=== REGISTERED ROUTES ===');
 app._router.stack.forEach((middleware) => {
     if (middleware.route) {
@@ -32,21 +26,21 @@ app._router.stack.forEach((middleware) => {
     }
 });
 console.log('========================');
-app.use(middleware_1.notFoundHandler);
-app.use(middleware_1.errorHandler);
+app.use(notFoundHandler);
+app.use(errorHandler);
 const PORT = process.env.PORT || 3000;
 const server = app.listen(PORT, async () => {
     console.log(`WhatsApp Multi-Session API Server running on port ${PORT}`);
     console.log('Server ready for session management');
     try {
-        const sessionsHistory = await services_1.DatabaseService.getSessionsHistory(1, 100);
+        const sessionsHistory = await DatabaseService.getSessionsHistory(1, 100);
         const activeSessions = sessionsHistory.data.filter(session => session.status === 'connected' || session.status === 'authenticated');
         if (activeSessions.length > 0) {
             console.log(`Found ${activeSessions.length} previously active sessions, attempting to restore...`);
             for (const session of activeSessions) {
                 try {
                     console.log(`Restoring session: ${session.sessionId}`);
-                    await services_2.WhatsAppService.createConnection(session.sessionId);
+                    await WhatsAppService.createConnection(session.sessionId);
                 }
                 catch (error) {
                     console.error(`Failed to restore session ${session.sessionId}:`, error);
@@ -63,7 +57,7 @@ const gracefulShutdown = async () => {
     server.close(async () => {
         console.log('HTTP server closed');
         try {
-            await services_1.DatabaseService.disconnect();
+            await DatabaseService.disconnect();
             console.log('Database connection closed');
             process.exit(0);
         }
@@ -87,5 +81,5 @@ process.on('uncaughtException', (error) => {
     console.error('Uncaught Exception:', error);
     gracefulShutdown();
 });
-exports.default = app;
+export default app;
 //# sourceMappingURL=app.js.map

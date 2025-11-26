@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { MessageController } from '@/controllers';
-import { authenticateApiKey } from '@/middleware';
+import { MessageController } from '@/controllers/index.js';
+import { authenticateApiKey } from '@/middleware/index.js';
 
 const router = Router();
 

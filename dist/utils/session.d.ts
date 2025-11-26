@@ -1,4 +1,4 @@
-import { SessionData, SessionStatus } from '@/types';
+import { SessionData, SessionStatus } from '@/types/index.js';
 export declare function getSessionStatus(sessionId: string, sessions: Map<string, SessionData>): SessionStatus;
 export declare function generateSessionId(prefix?: string): string;
 export declare function isValidSessionId(sessionId: string): boolean;

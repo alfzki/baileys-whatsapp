@@ -1,4 +1,4 @@
 // Export all controllers
-export * from './sessionController';
-export * from './messageController';
-export * from './legacyController'; 
+export * from './sessionController.js';
+export * from './messageController.js';
+export * from './legacyController.js'; 

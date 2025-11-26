@@ -1,35 +1,31 @@
-"use strict";
 var _a;
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.SessionController = void 0;
-const services_1 = require("@/services");
-const utils_1 = require("@/utils");
-const middleware_1 = require("@/middleware");
-class SessionController {
+import { WhatsAppService, DatabaseService } from '@/services/index.js';
+import { getSessionStatus, isValidSessionId } from '@/utils/index.js';
+import { asyncHandler } from '@/middleware/index.js';
+export class SessionController {
 }
-exports.SessionController = SessionController;
 _a = SessionController;
-SessionController.listSessions = (0, middleware_1.asyncHandler)(async (req, res) => {
-    const sessions = services_1.WhatsAppService.getSessions();
+SessionController.listSessions = asyncHandler(async (req, res) => {
+    const sessions = WhatsAppService.getSessions();
     const sessionList = [];
     for (const [sessionId] of sessions) {
         sessionList.push({
             id: sessionId,
-            status: (0, utils_1.getSessionStatus)(sessionId, sessions)
+            status: getSessionStatus(sessionId, sessions)
         });
     }
     res.json(sessionList);
 });
-SessionController.findSession = (0, middleware_1.asyncHandler)(async (req, res) => {
+SessionController.findSession = asyncHandler(async (req, res) => {
     const { sessionId } = req.params;
-    const sessions = services_1.WhatsAppService.getSessions();
+    const sessions = WhatsAppService.getSessions();
     if (sessions.has(sessionId)) {
         res.json({
             success: true,
             message: 'Session found',
             data: {
                 id: sessionId,
-                status: (0, utils_1.getSessionStatus)(sessionId, sessions)
+                status: getSessionStatus(sessionId, sessions)
             }
         });
     }
@@ -40,11 +36,11 @@ SessionController.findSession = (0, middleware_1.asyncHandler)(async (req, res) 
         });
     }
 });
-SessionController.getSessionStatus = (0, middleware_1.asyncHandler)(async (req, res) => {
+SessionController.getSessionStatus = asyncHandler(async (req, res) => {
     const { sessionId } = req.params;
-    const sessions = services_1.WhatsAppService.getSessions();
-    const sessionQRs = services_1.WhatsAppService.getSessionQRs();
-    const status = (0, utils_1.getSessionStatus)(sessionId, sessions);
+    const sessions = WhatsAppService.getSessions();
+    const sessionQRs = WhatsAppService.getSessionQRs();
+    const status = getSessionStatus(sessionId, sessions);
     const qr = sessionQRs.get(sessionId);
     const response = { status };
     if (qr && status !== 'AUTHENTICATED') {
@@ -52,10 +48,10 @@ SessionController.getSessionStatus = (0, middleware_1.asyncHandler)(async (req, 
     }
     res.json(response);
 });
-SessionController.getQRCode = (0, middleware_1.asyncHandler)(async (req, res) => {
+SessionController.getQRCode = asyncHandler(async (req, res) => {
     const { sessionId } = req.params;
-    const sessions = services_1.WhatsAppService.getSessions();
-    const sessionQRs = services_1.WhatsAppService.getSessionQRs();
+    const sessions = WhatsAppService.getSessions();
+    const sessionQRs = WhatsAppService.getSessionQRs();
     if (!sessions.has(sessionId)) {
         return res.status(404).json({
             success: false,
@@ -77,7 +73,7 @@ SessionController.getQRCode = (0, middleware_1.asyncHandler)(async (req, res) =>
             qr: qr,
             message: 'Scan QR code with WhatsApp',
             sessionId: sessionId,
-            status: (0, utils_1.getSessionStatus)(sessionId, sessions)
+            status: getSessionStatus(sessionId, sessions)
         };
         res.json(response);
     }
@@ -86,12 +82,12 @@ SessionController.getQRCode = (0, middleware_1.asyncHandler)(async (req, res) =>
             success: false,
             message: 'QR code not available yet',
             sessionId: sessionId,
-            status: (0, utils_1.getSessionStatus)(sessionId, sessions)
+            status: getSessionStatus(sessionId, sessions)
         };
         res.json(response);
     }
 });
-SessionController.addSession = (0, middleware_1.asyncHandler)(async (req, res) => {
+SessionController.addSession = asyncHandler(async (req, res) => {
     const { sessionId, ...options } = req.body;
     if (!sessionId) {
         return res.status(400).json({
@@ -99,14 +95,14 @@ SessionController.addSession = (0, middleware_1.asyncHandler)(async (req, res) =
             message: 'Session ID is required'
         });
     }
-    if (!(0, utils_1.isValidSessionId)(sessionId)) {
+    if (!isValidSessionId(sessionId)) {
         return res.status(400).json({
             success: false,
             message: 'Invalid session ID format'
         });
     }
-    const sessions = services_1.WhatsAppService.getSessions();
-    const sessionQRs = services_1.WhatsAppService.getSessionQRs();
+    const sessions = WhatsAppService.getSessions();
+    const sessionQRs = WhatsAppService.getSessionQRs();
     if (sessions.has(sessionId)) {
         const existingSession = sessions.get(sessionId);
         if (existingSession.isAuthenticated) {
@@ -124,15 +120,15 @@ SessionController.addSession = (0, middleware_1.asyncHandler)(async (req, res) =
                 qr: existingQR,
                 message: 'Session exists, scan QR code to authenticate',
                 sessionId: sessionId,
-                status: (0, utils_1.getSessionStatus)(sessionId, sessions)
+                status: getSessionStatus(sessionId, sessions)
             });
         }
         console.log(`[${sessionId}] Session exists but no QR available, recreating...`);
     }
     console.log(`[${sessionId}] Creating new WhatsApp connection...`);
     try {
-        await services_1.WhatsAppService.createConnection(sessionId, options);
-        const qrResult = await services_1.WhatsAppService.waitForQR(sessionId);
+        await WhatsAppService.createConnection(sessionId, options);
+        const qrResult = await WhatsAppService.waitForQR(sessionId);
         if (qrResult === 'authenticated') {
             return res.json({
                 success: true,
@@ -147,11 +143,11 @@ SessionController.addSession = (0, middleware_1.asyncHandler)(async (req, res) =
                 qr: qrResult,
                 message: 'QR code generated successfully',
                 sessionId: sessionId,
-                status: (0, utils_1.getSessionStatus)(sessionId, sessions)
+                status: getSessionStatus(sessionId, sessions)
             });
         }
         else {
-            const currentStatus = (0, utils_1.getSessionStatus)(sessionId, sessions);
+            const currentStatus = getSessionStatus(sessionId, sessions);
             const session = sessions.get(sessionId);
             console.log(`[${sessionId}] QR generation timeout. Current status: ${currentStatus}`);
             return res.status(408).json({
@@ -177,7 +173,7 @@ SessionController.addSession = (0, middleware_1.asyncHandler)(async (req, res) =
     catch (error) {
         console.error(`Error adding session:`, error);
         try {
-            await services_1.WhatsAppService.deleteSession(sessionId);
+            await WhatsAppService.deleteSession(sessionId);
         }
         catch (cleanupError) {
             console.error(`Error cleaning up failed session ${sessionId}:`, cleanupError);
@@ -194,10 +190,10 @@ SessionController.addSession = (0, middleware_1.asyncHandler)(async (req, res) =
         });
     }
 });
-SessionController.deleteSession = (0, middleware_1.asyncHandler)(async (req, res) => {
+SessionController.deleteSession = asyncHandler(async (req, res) => {
     const { sessionId } = req.params;
     try {
-        await services_1.WhatsAppService.deleteSession(sessionId);
+        await WhatsAppService.deleteSession(sessionId);
         res.json({
             success: true,
             message: 'Session deleted'
@@ -212,10 +208,10 @@ SessionController.deleteSession = (0, middleware_1.asyncHandler)(async (req, res
         });
     }
 });
-SessionController.getSessionsHistory = (0, middleware_1.asyncHandler)(async (req, res) => {
+SessionController.getSessionsHistory = asyncHandler(async (req, res) => {
     const { page = '1', limit = '20' } = req.query;
     try {
-        const result = await services_1.DatabaseService.getSessionsHistory(parseInt(page), parseInt(limit));
+        const result = await DatabaseService.getSessionsHistory(parseInt(page), parseInt(limit));
         res.json({
             success: true,
             ...result

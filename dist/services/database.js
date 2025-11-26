@@ -1,16 +1,13 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.DatabaseService = exports.prisma = void 0;
-const client_1 = require("@prisma/client");
-exports.prisma = new client_1.PrismaClient();
-class DatabaseService {
+import { PrismaClient } from '@prisma/client';
+export const prisma = new PrismaClient();
+export class DatabaseService {
     static async createSessionRecord(sessionId) {
         try {
-            const existingSession = await exports.prisma.whatsappSession.findUnique({
+            const existingSession = await prisma.whatsappSession.findUnique({
                 where: { sessionId }
             });
             if (existingSession) {
-                await exports.prisma.whatsappSession.update({
+                await prisma.whatsappSession.update({
                     where: { sessionId },
                     data: {
                         status: 'connecting',
@@ -19,7 +16,7 @@ class DatabaseService {
                 });
                 return existingSession;
             }
-            const session = await exports.prisma.whatsappSession.create({
+            const session = await prisma.whatsappSession.create({
                 data: {
                     sessionId,
                     status: 'connecting',
@@ -36,7 +33,7 @@ class DatabaseService {
     }
     static async updateSessionStatus(sessionId, status) {
         try {
-            await exports.prisma.whatsappSession.update({
+            await prisma.whatsappSession.update({
                 where: { sessionId },
                 data: {
                     status,
@@ -50,7 +47,7 @@ class DatabaseService {
     }
     static async saveChatHistory(sessionId, phoneNumber, message, messageType = 'text', direction = 'outgoing', metadata = {}) {
         try {
-            await exports.prisma.chatHistory.create({
+            await prisma.chatHistory.create({
                 data: {
                     sessionId,
                     phoneNumber,
@@ -72,14 +69,14 @@ class DatabaseService {
             if (phoneNumber) {
                 where.phoneNumber = phoneNumber;
             }
-            const chatHistory = await exports.prisma.chatHistory.findMany({
+            const chatHistory = await prisma.chatHistory.findMany({
                 where,
                 orderBy: { timestamp: 'desc' },
                 skip: cursor ? undefined : (page - 1) * limit,
                 take: limit,
                 ...(cursor && { cursor: { id: cursor } })
             });
-            const total = await exports.prisma.chatHistory.count({ where });
+            const total = await prisma.chatHistory.count({ where });
             return {
                 data: chatHistory.map(chat => ({
                     ...chat,
@@ -96,7 +93,7 @@ class DatabaseService {
     }
     static async getSessionsHistory(page = 1, limit = 20) {
         try {
-            const sessions = await exports.prisma.whatsappSession.findMany({
+            const sessions = await prisma.whatsappSession.findMany({
                 orderBy: { createdAt: 'desc' },
                 skip: (page - 1) * limit,
                 take: limit,
@@ -106,7 +103,7 @@ class DatabaseService {
                     }
                 }
             });
-            const total = await exports.prisma.whatsappSession.count();
+            const total = await prisma.whatsappSession.count();
             return {
                 data: sessions,
                 pagination: {
@@ -124,10 +121,10 @@ class DatabaseService {
     }
     static async deleteSession(sessionId) {
         try {
-            await exports.prisma.chatHistory.deleteMany({
+            await prisma.chatHistory.deleteMany({
                 where: { sessionId }
             });
-            await exports.prisma.whatsappSession.delete({
+            await prisma.whatsappSession.delete({
                 where: { sessionId }
             });
         }
@@ -136,35 +133,49 @@ class DatabaseService {
         }
     }
     static async saveAuthData(sessionId, key, value) {
-        try {
-            await exports.prisma.authData.upsert({
-                where: {
-                    sessionId_key: {
+        let retries = 3;
+        while (retries > 0) {
+            try {
+                await prisma.authData.upsert({
+                    where: {
+                        sessionId_key: {
+                            sessionId,
+                            key
+                        }
+                    },
+                    update: {
+                        value,
+                        updatedAt: new Date()
+                    },
+                    create: {
                         sessionId,
-                        key
+                        key,
+                        value,
+                        createdAt: new Date(),
+                        updatedAt: new Date()
                     }
-                },
-                update: {
-                    value,
-                    updatedAt: new Date()
-                },
-                create: {
-                    sessionId,
-                    key,
-                    value,
-                    createdAt: new Date(),
-                    updatedAt: new Date()
+                });
+                return;
+            }
+            catch (error) {
+                const isTransient = error.message?.includes('Record has changed since last read') ||
+                    error.message?.includes('Deadlock found') ||
+                    error.code === 'P2034' ||
+                    error.code === 'P2002';
+                if (isTransient && retries > 1) {
+                    retries--;
+                    const delay = 200 + Math.random() * 300;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    continue;
                 }
-            });
-        }
-        catch (error) {
-            console.error('Error saving auth data:', error);
-            throw error;
+                console.error('Error saving auth data:', error);
+                throw error;
+            }
         }
     }
     static async getAuthData(sessionId) {
         try {
-            const authData = await exports.prisma.authData.findMany({
+            const authData = await prisma.authData.findMany({
                 where: { sessionId },
                 select: {
                     key: true,
@@ -180,7 +191,7 @@ class DatabaseService {
     }
     static async clearAuthData(sessionId) {
         try {
-            await exports.prisma.authData.deleteMany({
+            await prisma.authData.deleteMany({
                 where: { sessionId }
             });
         }
@@ -189,8 +200,7 @@ class DatabaseService {
         }
     }
     static async disconnect() {
-        await exports.prisma.$disconnect();
+        await prisma.$disconnect();
     }
 }
-exports.DatabaseService = DatabaseService;
 //# sourceMappingURL=database.js.map

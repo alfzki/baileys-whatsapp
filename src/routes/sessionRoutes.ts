@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { SessionController } from '@/controllers';
-import { authenticateApiKey } from '@/middleware';
+import { SessionController } from '@/controllers/index.js';
+import { authenticateApiKey } from '@/middleware/index.js';
 
 const router = Router();
 

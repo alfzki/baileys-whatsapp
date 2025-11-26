@@ -1,18 +1,12 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.WhatsAppService = void 0;
-const baileys_1 = require("@whiskeysockets/baileys");
-const qrcode_1 = __importDefault(require("qrcode"));
-const fs_1 = __importDefault(require("fs"));
-const pino_1 = __importDefault(require("pino"));
-const utils_1 = require("@/utils");
-const databaseAuth_1 = require("@/utils/databaseAuth");
-const database_1 = require("./database");
-const logger = (0, pino_1.default)({ level: 'silent' });
-class WhatsAppService {
+import { DisconnectReason, makeWASocket, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
+import qrcode from 'qrcode';
+import fs from 'fs';
+import P from 'pino';
+import { extractPhoneNumber } from '@/utils/index.js';
+import { useDatabaseAuthState } from '@/utils/databaseAuth.js';
+import { DatabaseService } from './database.js';
+const logger = P({ level: 'silent' });
+export class WhatsAppService {
     static getSessions() {
         return this.sessions;
     }
@@ -24,34 +18,37 @@ class WhatsAppService {
             if (this.sessions.has(sessionId)) {
                 const existingSession = this.sessions.get(sessionId);
                 if (existingSession.isAuthenticated) {
-                    console.log(`Session ${sessionId} already authenticated, skipping creation`);
+                    console.log(`[${sessionId}] Session already authenticated, skipping creation`);
                     return existingSession;
                 }
-                console.log(`Cleaning up existing session ${sessionId} before recreating`);
+                console.log(`[${sessionId}] Cleaning up existing socket before recreating`);
                 if (existingSession.socket) {
                     try {
-                        await existingSession.socket.end(undefined);
+                        existingSession.socket.end(undefined);
+                        existingSession.socket.ws.close();
+                        await new Promise(resolve => setTimeout(resolve, 1000));
                     }
                     catch (error) {
-                        console.error('Error ending existing socket:', error);
+                        console.error(`[${sessionId}] Error ending existing socket:`, error);
                     }
                 }
                 this.sessions.delete(sessionId);
                 this.sessionQRs.delete(sessionId);
             }
             const authDir = `auth_info_${sessionId}`;
-            if (fs_1.default.existsSync(authDir)) {
-                console.log(`Removing legacy auth directory: ${authDir}`);
-                fs_1.default.rmSync(authDir, { recursive: true, force: true });
+            if (fs.existsSync(authDir)) {
+                console.log(`[${sessionId}] Removing legacy auth directory: ${authDir}`);
+                fs.rmSync(authDir, { recursive: true, force: true });
             }
-            const { state, saveCreds, clearAuth } = await (0, databaseAuth_1.useDatabaseAuthState)(sessionId);
-            await database_1.DatabaseService.createSessionRecord(sessionId);
-            const socket = (0, baileys_1.makeWASocket)({
+            const { state, saveCreds, clearAuth, cleanup } = await useDatabaseAuthState(sessionId);
+            await DatabaseService.createSessionRecord(sessionId);
+            const { version, isLatest } = await fetchLatestBaileysVersion();
+            console.log(`[${sessionId}] Using WA version ${version.join('.')}, isLatest: ${isLatest}`);
+            const socket = makeWASocket({
                 auth: state,
                 logger,
-                printQRInTerminal: true,
-                browser: ['wa.dewakoding.com', 'Chrome', '87'],
-                version: [2, 3000, 1025190524],
+                browser: ['WhatsApp Multi-Session API', 'Chrome', '4.0.0'],
+                version,
                 defaultQueryTimeoutMs: 60000,
                 keepAliveIntervalMs: 30000,
                 connectTimeoutMs: 60000,
@@ -64,10 +61,7 @@ class WhatsAppService {
                 markOnlineOnConnect: false,
                 retryRequestDelayMs: 250,
                 maxMsgRetryCount: 5,
-                appStateMacVerification: {
-                    patch: true,
-                    snapshot: true
-                },
+                getMessage: async () => undefined,
                 ...options
             });
             const sessionData = {
@@ -75,7 +69,8 @@ class WhatsAppService {
                 isAuthenticated: false,
                 authDir: `db_auth_${sessionId}`,
                 status: 'connecting',
-                startTime: Date.now()
+                startTime: Date.now(),
+                cleanup
             };
             this.sessions.set(sessionId, sessionData);
             this.setupEventHandlers(sessionId, socket, sessionData, saveCreds, clearAuth);
@@ -103,7 +98,7 @@ class WhatsAppService {
             if (qr) {
                 console.log(`[${sessionId}] QR Code received, generating data URL...`);
                 try {
-                    const qrImage = await qrcode_1.default.toDataURL(qr, {
+                    const qrImage = await qrcode.toDataURL(qr, {
                         margin: 2,
                         width: 256,
                         color: {
@@ -112,7 +107,7 @@ class WhatsAppService {
                         }
                     });
                     this.sessionQRs.set(sessionId, qrImage);
-                    await database_1.DatabaseService.updateSessionStatus(sessionId, 'waiting_qr_scan');
+                    await DatabaseService.updateSessionStatus(sessionId, 'waiting_qr_scan');
                     console.log(`[${sessionId}] QR Code generated and stored`);
                 }
                 catch (qrError) {
@@ -121,33 +116,50 @@ class WhatsAppService {
             }
             if (connection === 'close') {
                 const statusCode = lastDisconnect?.error?.output?.statusCode;
-                const shouldReconnect = statusCode !== baileys_1.DisconnectReason.loggedOut;
+                const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
                 console.log(`[${sessionId}] Connection closed:`, {
                     statusCode,
-                    reason: Object.keys(baileys_1.DisconnectReason).find(key => baileys_1.DisconnectReason[key] === statusCode),
+                    reason: Object.keys(DisconnectReason).find(key => DisconnectReason[key] === statusCode),
                     shouldReconnect,
                     error: lastDisconnect?.error?.message
                 });
-                await database_1.DatabaseService.updateSessionStatus(sessionId, 'disconnected');
+                await DatabaseService.updateSessionStatus(sessionId, 'disconnected');
                 sessionData.isAuthenticated = false;
                 this.sessionQRs.delete(sessionId);
                 if (shouldReconnect && reconnectAttempts < maxReconnectAttempts) {
                     reconnectAttempts++;
                     console.log(`[${sessionId}] Attempting reconnection ${reconnectAttempts}/${maxReconnectAttempts} in 5 seconds...`);
-                    setTimeout(() => {
+                    setTimeout(async () => {
                         console.log(`[${sessionId}] Reconnecting...`);
-                        this.createConnection(sessionId, {}).catch(error => {
+                        try {
+                            const existingSession = this.sessions.get(sessionId);
+                            if (existingSession?.socket) {
+                                try {
+                                    existingSession.socket.end(undefined);
+                                    existingSession.socket.ws.close();
+                                }
+                                catch (e) {
+                                    console.log(`[${sessionId}] Error closing old socket:`, e);
+                                }
+                            }
+                            await this.createConnection(sessionId, {});
+                        }
+                        catch (error) {
                             console.error(`[${sessionId}] Reconnection failed:`, error);
-                        });
+                        }
                     }, 5000);
                 }
                 else if (reconnectAttempts >= maxReconnectAttempts) {
                     console.log(`[${sessionId}] Max reconnection attempts reached, stopping reconnection`);
+                    if (sessionData.cleanup)
+                        sessionData.cleanup();
                     this.sessions.delete(sessionId);
                     this.sessionQRs.delete(sessionId);
                 }
                 else {
                     console.log(`[${sessionId}] Session logged out, cleaning up...`);
+                    if (sessionData.cleanup)
+                        sessionData.cleanup();
                     this.sessions.delete(sessionId);
                     this.sessionQRs.delete(sessionId);
                     await clearAuth();
@@ -155,14 +167,14 @@ class WhatsAppService {
             }
             else if (connection === 'connecting') {
                 console.log(`[${sessionId}] Connecting to WhatsApp...`);
-                await database_1.DatabaseService.updateSessionStatus(sessionId, 'connecting');
+                await DatabaseService.updateSessionStatus(sessionId, 'connecting');
             }
             else if (connection === 'open') {
                 console.log(`[${sessionId}] WhatsApp connection opened successfully`);
                 sessionData.isAuthenticated = true;
                 reconnectAttempts = 0;
                 this.sessionQRs.delete(sessionId);
-                await database_1.DatabaseService.updateSessionStatus(sessionId, 'connected');
+                await DatabaseService.updateSessionStatus(sessionId, 'connected');
                 try {
                     const info = socket.user;
                     console.log(`[${sessionId}] Authenticated as:`, {
@@ -185,12 +197,23 @@ class WhatsAppService {
                 console.error(`[${sessionId}] Error saving credentials:`, error);
             }
         });
+        socket.ev.on('lid-mapping.update', async (update) => {
+            try {
+                console.log(`[${sessionId}] LID mapping update:`, update);
+            }
+            catch (error) {
+                console.error(`[${sessionId}] Error handling LID mapping update:`, error);
+            }
+        });
         socket.ev.on('messages.upsert', async (messageUpdate) => {
             const { messages } = messageUpdate;
             for (const message of messages) {
                 if (message.key.fromMe)
                     continue;
-                const phoneNumber = message.key.remoteJid?.replace('@s.whatsapp.net', '').replace('@g.us', '');
+                const jid = message.key.remoteJid;
+                const altJid = message.key.remoteJidAlt || message.key.participantAlt;
+                const preferredJid = altJid || jid;
+                const phoneNumber = preferredJid?.replace('@s.whatsapp.net', '').replace('@g.us', '').replace('@lid', '');
                 if (!phoneNumber)
                     continue;
                 let messageText = '';
@@ -229,7 +252,7 @@ class WhatsAppService {
                         seconds: message.message.audioMessage.seconds
                     };
                 }
-                await database_1.DatabaseService.saveChatHistory(sessionId, phoneNumber, messageText, messageType, 'incoming', metadata);
+                await DatabaseService.saveChatHistory(sessionId, phoneNumber, messageText, messageType, 'incoming', metadata);
             }
         });
     }
@@ -239,9 +262,9 @@ class WhatsAppService {
             throw new Error('Session not found or not authenticated');
         }
         const result = await sessionData.socket.sendMessage(jid, message, options);
-        const phoneNumber = (0, utils_1.extractPhoneNumber)(jid);
+        const phoneNumber = extractPhoneNumber(jid);
         const messageText = message.text || JSON.stringify(message);
-        await database_1.DatabaseService.saveChatHistory(sessionId, phoneNumber, messageText, 'text', 'outgoing');
+        await DatabaseService.saveChatHistory(sessionId, phoneNumber, messageText, 'text', 'outgoing');
         return result;
     }
     static async sendPoll(sessionId, jid, name, options, selectableCount = 1) {
@@ -257,9 +280,9 @@ class WhatsAppService {
             }
         };
         const result = await sessionData.socket.sendMessage(jid, pollMessage);
-        const phoneNumber = (0, utils_1.extractPhoneNumber)(jid);
+        const phoneNumber = extractPhoneNumber(jid);
         const messageText = `Poll: ${name} - Options: ${options.join(', ')}`;
-        await database_1.DatabaseService.saveChatHistory(sessionId, phoneNumber, messageText, 'poll', 'outgoing');
+        await DatabaseService.saveChatHistory(sessionId, phoneNumber, messageText, 'poll', 'outgoing');
         return result;
     }
     static async getGroups(sessionId) {
@@ -274,10 +297,15 @@ class WhatsAppService {
                 name: group.subject,
                 description: group.desc || '',
                 participantsCount: group.participants?.length || 0,
-                isAdmin: group.participants?.some(p => p.id === sessionData.socket?.user?.id &&
-                    (p.admin === 'admin' || p.admin === 'superadmin')) || false,
+                isAdmin: group.participants?.some(p => {
+                    const userId = sessionData.socket?.user?.id;
+                    const participantId = p.id || p.phoneNumber;
+                    return participantId === userId &&
+                        (p.admin === 'admin' || p.admin === 'superadmin');
+                }) || false,
                 createdAt: group.creation ? new Date(group.creation * 1000) : null,
-                owner: group.owner || null
+                owner: group.ownerPn || group.owner || null,
+                ownerLid: group.owner || null
             }));
             return groups;
         }
@@ -298,10 +326,10 @@ class WhatsAppService {
                     console.error(`Error ending session ${sessionId}:`, error);
                 }
             }
-            await database_1.DatabaseService.clearAuthData(sessionId);
+            await DatabaseService.clearAuthData(sessionId);
             this.sessions.delete(sessionId);
             this.sessionQRs.delete(sessionId);
-            await database_1.DatabaseService.updateSessionStatus(sessionId, 'logged_out');
+            await DatabaseService.updateSessionStatus(sessionId, 'logged_out');
         }
     }
     static async waitForQR(sessionId, maxAttempts = 40) {
@@ -331,7 +359,6 @@ class WhatsAppService {
         });
     }
 }
-exports.WhatsAppService = WhatsAppService;
 WhatsAppService.sessions = new Map();
 WhatsAppService.sessionQRs = new Map();
 //# sourceMappingURL=whatsapp.js.map

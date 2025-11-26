@@ -4,10 +4,10 @@ import {
   BulkMessageRequest,
   ChatHistoryQuery,
   PollRequest
-} from '@/types';
-import { WhatsAppService, DatabaseService } from '@/services';
-import { formatPhoneNumber, extractPhoneNumber, sleep } from '@/utils';
-import { asyncHandler } from '@/middleware';
+} from '@/types/index.js';
+import { WhatsAppService, DatabaseService } from '@/services/index.js';
+import { formatPhoneNumber, extractPhoneNumber, sleep } from '@/utils/index.js';
+import { asyncHandler } from '@/middleware/index.js';
 
 /**
  * Message Controller

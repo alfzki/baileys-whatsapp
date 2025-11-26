@@ -1,7 +1,4 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.optionalAuth = exports.authenticateApiKey = void 0;
-const authenticateApiKey = (req, res, next) => {
+export const authenticateApiKey = (req, res, next) => {
     const apiKey = req.headers['x-api-key'] ||
         req.headers['authorization']?.toString().replace('Bearer ', '');
     if (!apiKey) {
@@ -24,8 +21,7 @@ const authenticateApiKey = (req, res, next) => {
     req.apiKey = apiKey;
     next();
 };
-exports.authenticateApiKey = authenticateApiKey;
-const optionalAuth = (req, res, next) => {
+export const optionalAuth = (req, res, next) => {
     const apiKey = req.headers['x-api-key'] ||
         req.headers['authorization']?.toString().replace('Bearer ', '');
     if (apiKey) {
@@ -38,5 +34,4 @@ const optionalAuth = (req, res, next) => {
     }
     next();
 };
-exports.optionalAuth = optionalAuth;
 //# sourceMappingURL=auth.js.map

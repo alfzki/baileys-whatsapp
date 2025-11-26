@@ -1,17 +1,14 @@
-// Register module aliases for runtime path resolution
-import 'module-alias/register';
-
 import express from 'express';
 import { config } from 'dotenv';
-import { sessionRoutes, messageRoutes, legacyRoutes } from '@/routes';
+import { sessionRoutes, messageRoutes, legacyRoutes } from '@/routes/index.js';
 import { 
   errorHandler, 
   notFoundHandler, 
   requestLogger, 
   corsHeaders 
-} from '@/middleware';
-import { DatabaseService } from '@/services';
-import { WhatsAppService } from '@/services';
+} from '@/middleware/index.js';
+import { DatabaseService } from '@/services/index.js';
+import { WhatsAppService } from '@/services/index.js';
 
 // Load environment variables
 config();

@@ -1,31 +1,8 @@
-"use strict";
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.useDatabaseAuthState = useDatabaseAuthState;
-const baileys_1 = require("@whiskeysockets/baileys");
-const database_1 = require("@/services/database");
+import { initAuthCreds, BufferJSON } from '@whiskeysockets/baileys';
+import { DatabaseService } from '@/services/database.js';
 function serializeData(data) {
     try {
-        return JSON.stringify(data, (key, value) => {
-            if (value instanceof Uint8Array) {
-                return {
-                    __type: 'Uint8Array',
-                    data: Array.from(value)
-                };
-            }
-            if (value instanceof Buffer) {
-                return {
-                    __type: 'Buffer',
-                    data: Array.from(value)
-                };
-            }
-            if (value && typeof value === 'object' && value.type === 'Buffer') {
-                return {
-                    __type: 'Buffer',
-                    data: value.data
-                };
-            }
-            return value;
-        });
+        return JSON.stringify(data, BufferJSON.replacer);
     }
     catch (error) {
         console.error('Error serializing data:', error);
@@ -34,27 +11,17 @@ function serializeData(data) {
 }
 function deserializeData(jsonString) {
     try {
-        return JSON.parse(jsonString, (key, value) => {
-            if (value && typeof value === 'object' && value.__type) {
-                if (value.__type === 'Uint8Array') {
-                    return new Uint8Array(value.data);
-                }
-                if (value.__type === 'Buffer') {
-                    return Buffer.from(value.data);
-                }
-            }
-            return value;
-        });
+        return JSON.parse(jsonString, BufferJSON.reviver);
     }
     catch (error) {
         console.error('Error deserializing data:', error);
         return {};
     }
 }
-async function useDatabaseAuthState(sessionId) {
-    let creds = (0, baileys_1.initAuthCreds)();
+export async function useDatabaseAuthState(sessionId) {
+    let creds = initAuthCreds();
     const keys = {};
-    const authDataList = await database_1.DatabaseService.getAuthData(sessionId);
+    const authDataList = await DatabaseService.getAuthData(sessionId);
     console.log(`[${sessionId}] Loading auth data from database, found ${authDataList.length} entries`);
     const credsData = authDataList.find(data => data.key === 'creds.json');
     if (credsData) {
@@ -66,12 +33,12 @@ async function useDatabaseAuthState(sessionId) {
             }
             else {
                 console.log(`[${sessionId}] Invalid credentials structure, using defaults`);
-                creds = (0, baileys_1.initAuthCreds)();
+                creds = initAuthCreds();
             }
         }
         catch (error) {
             console.error(`[${sessionId}] Error parsing credentials:`, error);
-            creds = (0, baileys_1.initAuthCreds)();
+            creds = initAuthCreds();
         }
     }
     authDataList.forEach(data => {
@@ -115,33 +82,34 @@ async function useDatabaseAuthState(sessionId) {
     const saveCreds = async () => {
         try {
             console.log(`[${sessionId}] Saving credentials to database`);
-            await database_1.DatabaseService.saveAuthData(sessionId, 'creds.json', serializeData(creds));
+            await DatabaseService.saveAuthData(sessionId, 'creds.json', serializeData(creds));
             for (const keyType in keys) {
                 const keyData = keys[keyType];
                 if (keyData && typeof keyData === 'object' && Object.keys(keyData).length > 0) {
-                    await database_1.DatabaseService.saveAuthData(sessionId, `${keyType}.json`, serializeData(keyData));
+                    await DatabaseService.saveAuthData(sessionId, `${keyType}.json`, serializeData(keyData));
                     console.log(`[${sessionId}] Saved key type: ${keyType}`);
                 }
             }
+            console.log(`[${sessionId}] Credentials saved successfully`);
         }
         catch (error) {
             console.error(`[${sessionId}] Error saving credentials:`, error);
+            throw error;
         }
     };
     const clearAuth = async () => {
         try {
             console.log(`[${sessionId}] Clearing auth data from database`);
-            await database_1.DatabaseService.clearAuthData(sessionId);
+            await DatabaseService.clearAuthData(sessionId);
         }
         catch (error) {
             console.error(`[${sessionId}] Error clearing auth data:`, error);
         }
     };
-    return {
-        state,
-        saveCreds,
-        clearAuth
+    const cleanup = () => {
+        console.log(`[${sessionId}] Auth cleanup called`);
     };
+    return { state, saveCreds, clearAuth, cleanup };
 }
 function getKeyTypeFromFileName(fileName) {
     const keyTypeMap = {
@@ -150,7 +118,10 @@ function getKeyTypeFromFileName(fileName) {
         'sender-key.json': 'sender-key',
         'sender-key-memory.json': 'sender-key-memory',
         'session.json': 'session',
-        'pre-key.json': 'pre-key'
+        'pre-key.json': 'pre-key',
+        'lid-mapping.json': 'lid-mapping',
+        'device-list.json': 'device-list',
+        'tctoken.json': 'tctoken'
     };
     return keyTypeMap[fileName] || null;
 }

@@ -1,4 +1,4 @@
-export * from './sessionRoutes';
-export * from './messageRoutes';
-export * from './legacyRoutes';
+export * from './sessionRoutes.js';
+export * from './messageRoutes.js';
+export * from './legacyRoutes.js';
 //# sourceMappingURL=index.d.ts.map

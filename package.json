@@ -2,10 +2,11 @@
   "name": "whatsapp-multi-session-api",
   "version": "2.0.0",
   "description": "WhatsApp Multi-Session API with authentication and database logging",
+  "type": "module",
   "main": "dist/app.js",
   "scripts": {
     "start": "node dist/app.js",
-    "dev": "nodemon --exec ts-node src/app.ts",
+    "dev": "tsx watch src/app.ts",
     "build": "tsc",
     "build:watch": "tsc --watch",
     "prod": "npm run build && npm start",
@@ -28,14 +29,13 @@
   },
   "dependencies": {
     "@prisma/client": "^5.7.0",
-    "@whiskeysockets/baileys": "^6.7.18",
+    "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "express-rate-limit": "^7.1.5",
     "express-validator": "^7.0.1",
     "helmet": "^7.1.0",
-    "module-alias": "^2.2.3",
     "morgan": "^1.10.0",
     "pino": "^8.16.2",
     "qrcode": "^1.5.3"
@@ -53,7 +53,7 @@
     "nodemon": "^3.0.2",
     "prisma": "^5.7.0",
     "supertest": "^6.3.3",
-    "ts-node": "^10.9.2",
+    "tsx": "^4.7.0",
     "typescript": "^5.3.3"
   },
   "keywords": [
@@ -78,14 +78,5 @@
   },
   "prisma": {
     "seed": "node prisma/seed.js"
-  },
-  "_moduleAliases": {
-    "@": "./dist",
-    "@/types": "./dist/types",
-    "@/utils": "./dist/utils",
-    "@/services": "./dist/services",
-    "@/controllers": "./dist/controllers",
-    "@/middleware": "./dist/middleware",
-    "@/routes": "./dist/routes"
   }
 }

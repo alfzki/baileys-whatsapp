@@ -1,4 +1,4 @@
-import { SessionData, SessionStatus } from '@/types';
+import { SessionData, SessionStatus } from '@/types/index.js';
 
 /**
  * Get session status from session data

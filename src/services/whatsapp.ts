@@ -1,7 +1,9 @@
 import { 
   DisconnectReason, 
   makeWASocket,
-  WASocket
+  WASocket,
+  BufferJSON,
+  fetchLatestBaileysVersion
 } from '@whiskeysockets/baileys';
 import qrcode from 'qrcode';
 import fs from 'fs';
@@ -11,10 +13,10 @@ import {
   ConnectionOptions, 
   MessageType, 
   MessageDirection 
-} from '@/types';
-import { extractPhoneNumber } from '@/utils';
-import { useDatabaseAuthState } from '@/utils/databaseAuth';
-import { DatabaseService } from './database';
+} from '@/types/index.js';
+import { extractPhoneNumber } from '@/utils/index.js';
+import { useDatabaseAuthState } from '@/utils/databaseAuth.js';
+import { DatabaseService } from './database.js';
 
 // Logger
 const logger = P({ level: 'silent' });
@@ -58,19 +60,25 @@ export class WhatsAppService {
       if (this.sessions.has(sessionId)) {
         const existingSession = this.sessions.get(sessionId)!;
         if (existingSession.isAuthenticated) {
-          console.log(`Session ${sessionId} already authenticated, skipping creation`);
+          console.log(`[${sessionId}] Session already authenticated, skipping creation`);
           return existingSession;
         }
         
-        // Clean up existing session before recreating
-        console.log(`Cleaning up existing session ${sessionId} before recreating`);
+        // Clean up existing socket before recreating (but keep session data for reconnection)
+        console.log(`[${sessionId}] Cleaning up existing socket before recreating`);
+        
         if (existingSession.socket) {
           try {
-            await existingSession.socket.end(undefined);
+            existingSession.socket.end(undefined);
+            existingSession.socket.ws.close();
+            // Wait for socket to fully close
+            await new Promise(resolve => setTimeout(resolve, 1000));
           } catch (error) {
-            console.error('Error ending existing socket:', error);
+            console.error(`[${sessionId}] Error ending existing socket:`, error);
           }
         }
+        
+        // Only delete session and QR, but DON'T call cleanup (preserve auth data)
         this.sessions.delete(sessionId);
         this.sessionQRs.delete(sessionId);
       }
@@ -78,22 +86,25 @@ export class WhatsAppService {
       // Clean up any existing auth folder (legacy cleanup)
       const authDir = `auth_info_${sessionId}`;
       if (fs.existsSync(authDir)) {
-        console.log(`Removing legacy auth directory: ${authDir}`);
+        console.log(`[${sessionId}] Removing legacy auth directory: ${authDir}`);
         fs.rmSync(authDir, { recursive: true, force: true });
       }
       
       // Use database auth state instead of file system
-      const { state, saveCreds, clearAuth } = await useDatabaseAuthState(sessionId);
+      const { state, saveCreds, clearAuth, cleanup } = await useDatabaseAuthState(sessionId);
       
       await DatabaseService.createSessionRecord(sessionId);
+      
+      // Fetch latest Baileys version
+      const { version, isLatest } = await fetchLatestBaileysVersion();
+      console.log(`[${sessionId}] Using WA version ${version.join('.')}, isLatest: ${isLatest}`);
       
       // Enhanced socket configuration
       const socket = makeWASocket({
         auth: state,
         logger,
-        printQRInTerminal: true,
-        browser: ['wa.dewakoding.com', 'Chrome', '87'],
-        version: [2, 3000, 1025190524],
+        browser: ['WhatsApp Multi-Session API', 'Chrome', '4.0.0'],
+        version,
         defaultQueryTimeoutMs: 60000,
         keepAliveIntervalMs: 30000,
         connectTimeoutMs: 60000,
@@ -106,10 +117,7 @@ export class WhatsAppService {
         markOnlineOnConnect: false,
         retryRequestDelayMs: 250,
         maxMsgRetryCount: 5,
-        appStateMacVerification: {
-          patch: true,
-          snapshot: true
-        },
+        getMessage: async () => undefined,
         ...options
       });
 
@@ -118,7 +126,8 @@ export class WhatsAppService {
         isAuthenticated: false,
         authDir: `db_auth_${sessionId}`, // Just for reference, not used for actual storage
         status: 'connecting',
-        startTime: Date.now()
+        startTime: Date.now(),
+        cleanup
       };
 
       this.sessions.set(sessionId, sessionData);
@@ -206,18 +215,36 @@ export class WhatsAppService {
         if (shouldReconnect && reconnectAttempts < maxReconnectAttempts) {
           reconnectAttempts++;
           console.log(`[${sessionId}] Attempting reconnection ${reconnectAttempts}/${maxReconnectAttempts} in 5 seconds...`);
-          setTimeout(() => {
+          
+          // Don't cleanup or delete the session - just reconnect with existing session
+          setTimeout(async () => {
             console.log(`[${sessionId}] Reconnecting...`);
-            this.createConnection(sessionId, {}).catch(error => {
+            try {
+              // Remove the old socket but keep the session data
+              const existingSession = this.sessions.get(sessionId);
+              if (existingSession?.socket) {
+                try {
+                  existingSession.socket.end(undefined);
+                  existingSession.socket.ws.close();
+                } catch (e) {
+                  console.log(`[${sessionId}] Error closing old socket:`, e);
+                }
+              }
+              
+              // Recreate connection without deleting auth data
+              await this.createConnection(sessionId, {});
+            } catch (error) {
               console.error(`[${sessionId}] Reconnection failed:`, error);
-            });
+            }
           }, 5000);
         } else if (reconnectAttempts >= maxReconnectAttempts) {
           console.log(`[${sessionId}] Max reconnection attempts reached, stopping reconnection`);
+          if (sessionData.cleanup) sessionData.cleanup();
           this.sessions.delete(sessionId);
           this.sessionQRs.delete(sessionId);
         } else {
           console.log(`[${sessionId}] Session logged out, cleaning up...`);
+          if (sessionData.cleanup) sessionData.cleanup();
           this.sessions.delete(sessionId);
           this.sessionQRs.delete(sessionId);
           // Clear auth data from database on logout
@@ -257,6 +284,17 @@ export class WhatsAppService {
       }
     });
 
+    // Event handler for LID mapping updates (v7 feature)
+    socket.ev.on('lid-mapping.update', async (update) => {
+      try {
+        console.log(`[${sessionId}] LID mapping update:`, update);
+        // The LID mapping is automatically stored in the auth state
+        // Additional custom logic can be added here if needed
+      } catch (error) {
+        console.error(`[${sessionId}] Error handling LID mapping update:`, error);
+      }
+    });
+
     // Event handler for incoming messages
     socket.ev.on('messages.upsert', async (messageUpdate) => {
       const { messages } = messageUpdate;
@@ -264,7 +302,12 @@ export class WhatsAppService {
       for (const message of messages) {
         if (message.key.fromMe) continue;
         
-        const phoneNumber = message.key.remoteJid?.replace('@s.whatsapp.net', '').replace('@g.us', '');
+        // Support for LID system - prefer Alt JID if available (contains phone number)
+        const jid = message.key.remoteJid;
+        const altJid = (message.key as any).remoteJidAlt || (message.key as any).participantAlt;
+        const preferredJid = altJid || jid;
+        
+        const phoneNumber = preferredJid?.replace('@s.whatsapp.net', '').replace('@g.us', '').replace('@lid', '');
         if (!phoneNumber) continue;
         
         let messageText = '';
@@ -415,12 +458,17 @@ export class WhatsAppService {
         name: group.subject,
         description: group.desc || '',
         participantsCount: group.participants?.length || 0,
-        isAdmin: group.participants?.some(p => 
-          p.id === sessionData.socket?.user?.id && 
-          (p.admin === 'admin' || p.admin === 'superadmin')
-        ) || false,
+        isAdmin: group.participants?.some(p => {
+          const userId = sessionData.socket?.user?.id;
+          // Support both LID and PN comparison
+          const participantId = (p as any).id || (p as any).phoneNumber;
+          return participantId === userId && 
+                 (p.admin === 'admin' || p.admin === 'superadmin');
+        }) || false,
         createdAt: group.creation ? new Date(group.creation * 1000) : null,
-        owner: group.owner || null
+        // Support LID system - owner can be LID, ownerPn contains phone number
+        owner: (group as any).ownerPn || group.owner || null,
+        ownerLid: (group as any).owner || null
       }));
 
       return groups;

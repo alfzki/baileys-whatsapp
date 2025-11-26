@@ -1,6 +1,6 @@
-export * from './phoneNumber';
-export * from './session';
-export * from './databaseAuth';
+export * from './phoneNumber.js';
+export * from './session.js';
+export * from './databaseAuth.js';
 export declare function sleep(ms: number): Promise<void>;
 export declare function generateRandomString(length?: number): string;
 export declare function sanitizeString(str: string): string;

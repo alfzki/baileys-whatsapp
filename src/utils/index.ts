@@ -1,7 +1,7 @@
 // Export all utility functions
-export * from './phoneNumber';
-export * from './session';
-export * from './databaseAuth';
+export * from './phoneNumber.js';
+export * from './session.js';
+export * from './databaseAuth.js';
 
 /**
  * Sleep utility function

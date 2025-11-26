@@ -1,32 +1,12 @@
-import { AuthenticationState, initAuthCreds } from '@whiskeysockets/baileys';
-import { DatabaseService } from '@/services/database';
+import { AuthenticationState, initAuthCreds, BufferJSON } from '@whiskeysockets/baileys';
+import { DatabaseService } from '@/services/database.js';
 
 /**
- * Serialize data to JSON with binary support
+ * Serialize data to JSON with binary support using BufferJSON
  */
 function serializeData(data: any): string {
   try {
-    return JSON.stringify(data, (key, value) => {
-      if (value instanceof Uint8Array) {
-        return {
-          __type: 'Uint8Array',
-          data: Array.from(value)
-        };
-      }
-      if (value instanceof Buffer) {
-        return {
-          __type: 'Buffer',
-          data: Array.from(value)
-        };
-      }
-      if (value && typeof value === 'object' && value.type === 'Buffer') {
-        return {
-          __type: 'Buffer',
-          data: value.data
-        };
-      }
-      return value;
-    });
+    return JSON.stringify(data, BufferJSON.replacer);
   } catch (error) {
     console.error('Error serializing data:', error);
     return '{}';
@@ -34,21 +14,11 @@ function serializeData(data: any): string {
 }
 
 /**
- * Deserialize JSON data with binary support
+ * Deserialize JSON data with binary support using BufferJSON
  */
 function deserializeData(jsonString: string): any {
   try {
-    return JSON.parse(jsonString, (key, value) => {
-      if (value && typeof value === 'object' && value.__type) {
-        if (value.__type === 'Uint8Array') {
-          return new Uint8Array(value.data);
-        }
-        if (value.__type === 'Buffer') {
-          return Buffer.from(value.data);
-        }
-      }
-      return value;
-    });
+    return JSON.parse(jsonString, BufferJSON.reviver);
   } catch (error) {
     console.error('Error deserializing data:', error);
     return {};
@@ -63,6 +33,7 @@ export async function useDatabaseAuthState(sessionId: string): Promise<{
   state: AuthenticationState;
   saveCreds: () => Promise<void>;
   clearAuth: () => Promise<void>;
+  cleanup: () => void;
 }> {
   // Initialize with default credentials
   let creds = initAuthCreds();
@@ -132,6 +103,7 @@ export async function useDatabaseAuthState(sessionId: string): Promise<{
     }
   };
 
+  // Save credentials immediately (no debounce to prevent data loss)
   const saveCreds = async () => {
     try {
       console.log(`[${sessionId}] Saving credentials to database`);
@@ -155,8 +127,11 @@ export async function useDatabaseAuthState(sessionId: string): Promise<{
           console.log(`[${sessionId}] Saved key type: ${keyType}`);
         }
       }
+      
+      console.log(`[${sessionId}] Credentials saved successfully`);
     } catch (error) {
       console.error(`[${sessionId}] Error saving credentials:`, error);
+      throw error;
     }
   };
 
@@ -169,11 +144,12 @@ export async function useDatabaseAuthState(sessionId: string): Promise<{
     }
   };
 
-  return {
-    state,
-    saveCreds,
-    clearAuth
+  const cleanup = () => {
+    // No cleanup needed anymore since we removed debounce
+    console.log(`[${sessionId}] Auth cleanup called`);
   };
+
+  return { state, saveCreds, clearAuth, cleanup };
 }
 
 /**
@@ -186,8 +162,11 @@ function getKeyTypeFromFileName(fileName: string): string | null {
     'sender-key.json': 'sender-key',
     'sender-key-memory.json': 'sender-key-memory',
     'session.json': 'session',
-    'pre-key.json': 'pre-key'
+    'pre-key.json': 'pre-key',
+    'lid-mapping.json': 'lid-mapping',
+    'device-list.json': 'device-list',
+    'tctoken.json': 'tctoken'
   };
 
   return keyTypeMap[fileName] || null;
-} 
+}

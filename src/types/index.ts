@@ -8,6 +8,7 @@ export interface SessionData {
   authDir: string;
   status: SessionStatus;
   startTime: number;
+  cleanup?: () => void;
 }
 
 export type SessionStatus = 

@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { AuthenticatedRequest } from '@/types';
+import { AuthenticatedRequest } from '@/types/index.js';
 
 /**
  * API Key Authentication Middleware
