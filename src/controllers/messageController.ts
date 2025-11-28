@@ -6,7 +6,7 @@ import {
   PollRequest
 } from '@/types/index.js';
 import { WhatsAppService, DatabaseService } from '@/services/index.js';
-import { formatPhoneNumber, extractPhoneNumber, sleep } from '@/utils/index.js';
+import { formatPhoneNumber, extractPhoneNumber, sleep, randomDelay, getBulkMessageDelayConfig } from '@/utils/index.js';
 import { asyncHandler } from '@/middleware/index.js';
 
 /**
@@ -92,13 +92,20 @@ export class MessageController {
     const results = [];
     const errors = [];
     
+    // Get bulk message delay configuration
+    const delayConfig = getBulkMessageDelayConfig();
+    
     try {
       for (let i = 0; i < messages.length; i++) {
-        const { jid, type, message, options = {}, delay = 1000 } = messages[i];
+        const { jid, type, message, options = {} } = messages[i];
         
         try {
           if (i > 0) {
-            await sleep(delay);
+            // Enforce minimum delay of 10-15 seconds between messages for safety
+            // This prevents WhatsApp from flagging bulk messages as spam
+            const safeDelay = randomDelay(delayConfig.minDelay, delayConfig.maxDelay);
+            console.log(`[Bulk] Waiting ${safeDelay}ms before sending message ${i + 1}/${messages.length}`);
+            await sleep(safeDelay);
           }
           
           let targetJid = jid;

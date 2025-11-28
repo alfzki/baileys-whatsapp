@@ -43,7 +43,8 @@ export interface SendMessageRequest {
 }
 
 export interface BulkMessageRequest extends SendMessageRequest {
-  delay?: number;
+  // Note: delay is now server-enforced (10-15 seconds) for safety
+  // Client-provided delay is ignored to prevent spam
 }
 
 export interface PollRequest {
