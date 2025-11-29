@@ -25,7 +25,6 @@ export interface SendMessageRequest {
     options?: any;
 }
 export interface BulkMessageRequest extends SendMessageRequest {
-    delay?: number;
 }
 export interface PollRequest {
     jid: string;

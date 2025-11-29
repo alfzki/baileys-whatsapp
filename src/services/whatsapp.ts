@@ -371,24 +371,49 @@ export class WhatsAppService {
     options: any = {}
   ) {
     const sessionData = this.sessions.get(sessionId);
-    if (!sessionData || !sessionData.isAuthenticated || !sessionData.socket) {
-      throw new Error('Session not found or not authenticated');
+    
+    // Check if session exists
+    if (!sessionData) {
+      throw new Error('Session not found. Please create a new session.');
+    }
+    
+    // Check if session is authenticated and socket is ready
+    if (!sessionData.isAuthenticated || !sessionData.socket) {
+      throw new Error('Session not authenticated. Please reconnect the session.');
+    }
+    
+    // Additional check: verify socket connection state
+    const socketState = (sessionData.socket.ws as any)?.readyState;
+    if (socketState !== 1) { // 1 = OPEN
+      console.error(`[${sessionId}] Socket not ready, state: ${socketState}`);
+      sessionData.isAuthenticated = false;
+      throw new Error('WhatsApp connection is not ready. Please wait for reconnection or restart the session.');
     }
 
-    const result = await sessionData.socket.sendMessage(jid, message, options);
-    
-    // Save to database
-    const phoneNumber = extractPhoneNumber(jid);
-    const messageText = message.text || JSON.stringify(message);
-    await DatabaseService.saveChatHistory(
-      sessionId, 
-      phoneNumber, 
-      messageText, 
-      'text', 
-      'outgoing'
-    );
-    
-    return result;
+    try {
+      const result = await sessionData.socket.sendMessage(jid, message, options);
+      
+      // Save to database
+      const phoneNumber = extractPhoneNumber(jid);
+      const messageText = message.text || JSON.stringify(message);
+      await DatabaseService.saveChatHistory(
+        sessionId, 
+        phoneNumber, 
+        messageText, 
+        'text', 
+        'outgoing'
+      );
+      
+      return result;
+    } catch (error: any) {
+      // Handle connection closed error specifically
+      if (error?.message?.includes('Connection Closed') || error?.output?.statusCode === 428) {
+        console.error(`[${sessionId}] Connection closed during message send, marking session as disconnected`);
+        sessionData.isAuthenticated = false;
+        throw new Error('WhatsApp connection was closed. The session will attempt to reconnect automatically.');
+      }
+      throw error;
+    }
   }
 
   /**
@@ -408,8 +433,23 @@ export class WhatsAppService {
     selectableCount: number = 1
   ) {
     const sessionData = this.sessions.get(sessionId);
-    if (!sessionData || !sessionData.isAuthenticated || !sessionData.socket) {
-      throw new Error('Session not found or not authenticated');
+    
+    // Check if session exists
+    if (!sessionData) {
+      throw new Error('Session not found. Please create a new session.');
+    }
+    
+    // Check if session is authenticated and socket is ready
+    if (!sessionData.isAuthenticated || !sessionData.socket) {
+      throw new Error('Session not authenticated. Please reconnect the session.');
+    }
+    
+    // Additional check: verify socket connection state
+    const socketState = (sessionData.socket.ws as any)?.readyState;
+    if (socketState !== 1) { // 1 = OPEN
+      console.error(`[${sessionId}] Socket not ready for poll, state: ${socketState}`);
+      sessionData.isAuthenticated = false;
+      throw new Error('WhatsApp connection is not ready. Please wait for reconnection or restart the session.');
     }
 
     // Create poll message
@@ -421,20 +461,30 @@ export class WhatsAppService {
       }
     };
 
-    const result = await sessionData.socket.sendMessage(jid, pollMessage);
-    
-    // Save to database
-    const phoneNumber = extractPhoneNumber(jid);
-    const messageText = `Poll: ${name} - Options: ${options.join(', ')}`;
-    await DatabaseService.saveChatHistory(
-      sessionId, 
-      phoneNumber, 
-      messageText, 
-      'poll', 
-      'outgoing'
-    );
-    
-    return result;
+    try {
+      const result = await sessionData.socket.sendMessage(jid, pollMessage);
+      
+      // Save to database
+      const phoneNumber = extractPhoneNumber(jid);
+      const messageText = `Poll: ${name} - Options: ${options.join(', ')}`;
+      await DatabaseService.saveChatHistory(
+        sessionId, 
+        phoneNumber, 
+        messageText, 
+        'poll', 
+        'outgoing'
+      );
+      
+      return result;
+    } catch (error: any) {
+      // Handle connection closed error specifically
+      if (error?.message?.includes('Connection Closed') || error?.output?.statusCode === 428) {
+        console.error(`[${sessionId}] Connection closed during poll send, marking session as disconnected`);
+        sessionData.isAuthenticated = false;
+        throw new Error('WhatsApp connection was closed. The session will attempt to reconnect automatically.');
+      }
+      throw error;
+    }
   }
 
   /**
@@ -444,8 +494,23 @@ export class WhatsAppService {
    */
   static async getGroups(sessionId: string) {
     const sessionData = this.sessions.get(sessionId);
-    if (!sessionData || !sessionData.isAuthenticated || !sessionData.socket) {
-      throw new Error('Session not found or not authenticated');
+    
+    // Check if session exists
+    if (!sessionData) {
+      throw new Error('Session not found. Please create a new session.');
+    }
+    
+    // Check if session is authenticated and socket is ready
+    if (!sessionData.isAuthenticated || !sessionData.socket) {
+      throw new Error('Session not authenticated. Please reconnect the session.');
+    }
+    
+    // Additional check: verify socket connection state
+    const socketState = (sessionData.socket.ws as any)?.readyState;
+    if (socketState !== 1) { // 1 = OPEN
+      console.error(`[${sessionId}] Socket not ready for getGroups, state: ${socketState}`);
+      sessionData.isAuthenticated = false;
+      throw new Error('WhatsApp connection is not ready. Please wait for reconnection or restart the session.');
     }
 
     try {
@@ -472,7 +537,13 @@ export class WhatsAppService {
       }));
 
       return groups;
-    } catch (error) {
+    } catch (error: any) {
+      // Handle connection closed error specifically
+      if (error?.message?.includes('Connection Closed') || error?.output?.statusCode === 428) {
+        console.error(`[${sessionId}] Connection closed during getGroups, marking session as disconnected`);
+        sessionData.isAuthenticated = false;
+        throw new Error('WhatsApp connection was closed. The session will attempt to reconnect automatically.');
+      }
       console.error('Error fetching groups:', error);
       throw new Error('Failed to fetch groups');
     }

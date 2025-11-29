@@ -78,6 +78,66 @@ export class SessionController {
   });
 
   /**
+   * GET /sessions/:sessionId/credentials - Get session credentials/user info
+   */
+  static getCredentials = asyncHandler(async (req: Request, res: Response) => {
+    const { sessionId } = req.params;
+    const sessions = WhatsAppService.getSessions();
+    
+    if (!sessions.has(sessionId)) {
+      return res.status(404).json({
+        success: false,
+        message: 'Session not found'
+      });
+    }
+    
+    const sessionData = sessions.get(sessionId)!;
+    
+    if (!sessionData.isAuthenticated || !sessionData.socket) {
+      return res.status(400).json({
+        success: false,
+        message: 'Session not authenticated'
+      });
+    }
+    
+    try {
+      const user = sessionData.socket.user;
+      
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          message: 'User info not available'
+        });
+      }
+      
+      // Extract phone number from JID (format: 628xxx@s.whatsapp.net)
+      const phoneNumber = user.id?.replace('@s.whatsapp.net', '').replace(':0', '').split(':')[0] || null;
+      
+      res.json({
+        success: true,
+        data: {
+          userInfo: {
+            jid: user.id || null,
+            phoneNumber: phoneNumber,
+            name: user.name || null,
+            platform: (user as any).platform || null,
+            imgUrl: (user as any).imgUrl || null
+          },
+          sessionId: sessionId,
+          status: getSessionStatus(sessionId, sessions)
+        }
+      });
+    } catch (error) {
+      console.error(`[${sessionId}] Error getting credentials:`, error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to get credentials',
+        error: (error as Error).message
+      });
+    }
+  });
+
+  /**
    * GET /sessions/:sessionId/qr - Get QR code for session
    */
   static getQRCode = asyncHandler(async (req: Request, res: Response) => {

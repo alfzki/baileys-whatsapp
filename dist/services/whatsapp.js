@@ -258,19 +258,47 @@ export class WhatsAppService {
     }
     static async sendMessage(sessionId, jid, message, options = {}) {
         const sessionData = this.sessions.get(sessionId);
-        if (!sessionData || !sessionData.isAuthenticated || !sessionData.socket) {
-            throw new Error('Session not found or not authenticated');
+        if (!sessionData) {
+            throw new Error('Session not found. Please create a new session.');
         }
-        const result = await sessionData.socket.sendMessage(jid, message, options);
-        const phoneNumber = extractPhoneNumber(jid);
-        const messageText = message.text || JSON.stringify(message);
-        await DatabaseService.saveChatHistory(sessionId, phoneNumber, messageText, 'text', 'outgoing');
-        return result;
+        if (!sessionData.isAuthenticated || !sessionData.socket) {
+            throw new Error('Session not authenticated. Please reconnect the session.');
+        }
+        const socketState = sessionData.socket.ws?.readyState;
+        if (socketState !== 1) {
+            console.error(`[${sessionId}] Socket not ready, state: ${socketState}`);
+            sessionData.isAuthenticated = false;
+            throw new Error('WhatsApp connection is not ready. Please wait for reconnection or restart the session.');
+        }
+        try {
+            const result = await sessionData.socket.sendMessage(jid, message, options);
+            const phoneNumber = extractPhoneNumber(jid);
+            const messageText = message.text || JSON.stringify(message);
+            await DatabaseService.saveChatHistory(sessionId, phoneNumber, messageText, 'text', 'outgoing');
+            return result;
+        }
+        catch (error) {
+            if (error?.message?.includes('Connection Closed') || error?.output?.statusCode === 428) {
+                console.error(`[${sessionId}] Connection closed during message send, marking session as disconnected`);
+                sessionData.isAuthenticated = false;
+                throw new Error('WhatsApp connection was closed. The session will attempt to reconnect automatically.');
+            }
+            throw error;
+        }
     }
     static async sendPoll(sessionId, jid, name, options, selectableCount = 1) {
         const sessionData = this.sessions.get(sessionId);
-        if (!sessionData || !sessionData.isAuthenticated || !sessionData.socket) {
-            throw new Error('Session not found or not authenticated');
+        if (!sessionData) {
+            throw new Error('Session not found. Please create a new session.');
+        }
+        if (!sessionData.isAuthenticated || !sessionData.socket) {
+            throw new Error('Session not authenticated. Please reconnect the session.');
+        }
+        const socketState = sessionData.socket.ws?.readyState;
+        if (socketState !== 1) {
+            console.error(`[${sessionId}] Socket not ready for poll, state: ${socketState}`);
+            sessionData.isAuthenticated = false;
+            throw new Error('WhatsApp connection is not ready. Please wait for reconnection or restart the session.');
         }
         const pollMessage = {
             poll: {
@@ -279,16 +307,35 @@ export class WhatsAppService {
                 selectableCount: selectableCount
             }
         };
-        const result = await sessionData.socket.sendMessage(jid, pollMessage);
-        const phoneNumber = extractPhoneNumber(jid);
-        const messageText = `Poll: ${name} - Options: ${options.join(', ')}`;
-        await DatabaseService.saveChatHistory(sessionId, phoneNumber, messageText, 'poll', 'outgoing');
-        return result;
+        try {
+            const result = await sessionData.socket.sendMessage(jid, pollMessage);
+            const phoneNumber = extractPhoneNumber(jid);
+            const messageText = `Poll: ${name} - Options: ${options.join(', ')}`;
+            await DatabaseService.saveChatHistory(sessionId, phoneNumber, messageText, 'poll', 'outgoing');
+            return result;
+        }
+        catch (error) {
+            if (error?.message?.includes('Connection Closed') || error?.output?.statusCode === 428) {
+                console.error(`[${sessionId}] Connection closed during poll send, marking session as disconnected`);
+                sessionData.isAuthenticated = false;
+                throw new Error('WhatsApp connection was closed. The session will attempt to reconnect automatically.');
+            }
+            throw error;
+        }
     }
     static async getGroups(sessionId) {
         const sessionData = this.sessions.get(sessionId);
-        if (!sessionData || !sessionData.isAuthenticated || !sessionData.socket) {
-            throw new Error('Session not found or not authenticated');
+        if (!sessionData) {
+            throw new Error('Session not found. Please create a new session.');
+        }
+        if (!sessionData.isAuthenticated || !sessionData.socket) {
+            throw new Error('Session not authenticated. Please reconnect the session.');
+        }
+        const socketState = sessionData.socket.ws?.readyState;
+        if (socketState !== 1) {
+            console.error(`[${sessionId}] Socket not ready for getGroups, state: ${socketState}`);
+            sessionData.isAuthenticated = false;
+            throw new Error('WhatsApp connection is not ready. Please wait for reconnection or restart the session.');
         }
         try {
             const chats = await sessionData.socket.groupFetchAllParticipating();
@@ -310,6 +357,11 @@ export class WhatsAppService {
             return groups;
         }
         catch (error) {
+            if (error?.message?.includes('Connection Closed') || error?.output?.statusCode === 428) {
+                console.error(`[${sessionId}] Connection closed during getGroups, marking session as disconnected`);
+                sessionData.isAuthenticated = false;
+                throw new Error('WhatsApp connection was closed. The session will attempt to reconnect automatically.');
+            }
             console.error('Error fetching groups:', error);
             throw new Error('Failed to fetch groups');
         }
